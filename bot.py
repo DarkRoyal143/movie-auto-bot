@@ -1,73 +1,48 @@
+import asyncio
+from telegram import Bot
 import os
 import requests
-from telegram import Bot
-from dotenv import load_dotenv
 
-load_dotenv()
-
+# Load secrets from environment variables
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-TMDB_API_KEY = os.getenv("TMDB_API_KEY")
-
 HOLLYWOOD_CHANNEL = os.getenv("HOLLYWOOD_CHANNEL")
 TOLLYWOOD_CHANNEL = os.getenv("TOLLYWOOD_CHANNEL")
 BOLLYWOOD_CHANNEL = os.getenv("BOLLYWOOD_CHANNEL")
+TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 
 bot = Bot(token=BOT_TOKEN)
 
-def get_movie_details(movie_name):
+# Function to get movie details from TMDB
+def get_movie_details(movie_name, category="hollywood"):
     url = f"https://api.themoviedb.org/3/search/movie?api_key={TMDB_API_KEY}&query={movie_name}"
     response = requests.get(url).json()
-
     if response["results"]:
         movie = response["results"][0]
-        title = movie["title"]
-        release_date = movie.get("release_date", "N/A")
-        overview = movie.get("overview", "No description available.")
-        rating = movie.get("vote_average", "N/A")
-        poster = f"https://image.tmdb.org/t/p/w500{movie['poster_path']}" if movie.get("poster_path") else None
-
-        return title, release_date, overview, rating, poster
+        title = movie.get("title")
+        release_date = movie.get("release_date")
+        overview = movie.get("overview")
+        poster_path = movie.get("poster_path")
+        poster_url = f"https://image.tmdb.org/t/p/w500{poster_path}" if poster_path else None
+        return {"title": title, "release_date": release_date, "overview": overview, "poster": poster_url}
     return None
 
-def get_trailer(movie_name):
-    query = f"{movie_name} official trailer"
-    return f"https://www.youtube.com/results?search_query={query}"
-
-def post_movie(category, movie_name, watch_link):
-    details = get_movie_details(movie_name)
-    if not details:
+# Async function to post movie in a channel
+async def post_movie(channel, movie_name):
+    movie = get_movie_details(movie_name)
+    if not movie:
         return
-
-    title, release_date, overview, rating, poster = details
-    trailer_link = get_trailer(movie_name)
-
-    caption = f"""
-🎬 *{title}*
-
-📅 Release Date: {release_date}
-⭐ Rating: {rating}
-
-📝 Overview:
-{overview}
-
-▶️ Trailer: {trailer_link}
-🎥 Watch Now: {watch_link}
-"""
-
-    if category.lower() == "hollywood":
-        channel = HOLLYWOOD_CHANNEL
-    elif category.lower() == "tollywood":
-        channel = TOLLYWOOD_CHANNEL
-    elif category.lower() == "bollywood":
-        channel = BOLLYWOOD_CHANNEL
+    caption = f"*{movie['title']}* ({movie['release_date']})\n\n{movie['overview']}\n\n[Watch Here](https://www.themoviedb.org/movie/{movie_name.replace(' ', '-')})"
+    
+    if movie["poster"]:
+        await bot.send_photo(chat_id=channel, photo=movie["poster"], caption=caption, parse_mode="Markdown")
     else:
-        return
+        await bot.send_message(chat_id=channel, text=caption, parse_mode="Markdown")
 
-    if poster:
-        bot.send_photo(chat_id=channel, photo=poster, caption=caption, parse_mode="Markdown")
-    else:
-        bot.send_message(chat_id=channel, text=caption, parse_mode="Markdown")
+# Example: Auto-post for testing
+async def main():
+    await post_movie(HOLLYWOOD_CHANNEL, "Inception")
+    await post_movie(TOLLYWOOD_CHANNEL, "Pushpa")
+    await post_movie(BOLLYWOOD_CHANNEL, "Pathaan")
 
 if __name__ == "__main__":
-    # Example Auto Post
-    post_movie("hollywood", "Inception", "https://example.com/watch-link")
+    asyncio.run(main())
